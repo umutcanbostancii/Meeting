@@ -173,15 +173,110 @@ function App() {
         </div>
 
         {suggestedDay && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-8">
-            <div className="flex items-center justify-center gap-2">
-              <PinIcon className="h-5 w-5 text-green-500" />
-              <p className="text-lg font-medium text-green-800">
-                Önerilen Toplantı Zamanı: {suggestedDay} @ 21:00
+          <div className="bg-green-50 border border-green-200 rounded-lg p-6 mb-8">
+            <div className="flex flex-col items-center justify-center gap-4">
+              <PinIcon className="h-8 w-8 text-green-500" />
+              <p className="text-2xl font-bold text-green-800">
+                Önerilen Toplantı Zamanı
+              </p>
+              <p className="text-4xl font-bold text-green-900">
+                {suggestedDay} @ 21:00
               </p>
             </div>
           </div>
         )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+          {/* En Çok Uygun Olan Günler */}
+          <div className="bg-white shadow rounded-lg p-6">
+            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+              <CheckCircle className="h-6 w-6 text-green-500" />
+              En Çok Uygun Olan Günler
+            </h2>
+            <div className="space-y-4">
+              {DAYS
+                .map(day => ({
+                  day,
+                  count: voteStats[day]?.available || 0
+                }))
+                .sort((a, b) => b.count - a.count)
+                .slice(0, 3)
+                .map(({ day, count }, index) => (
+                  <div 
+                    key={day}
+                    className={`flex items-center justify-between p-3 rounded-lg ${
+                      index === 0 
+                        ? 'bg-green-50 border border-green-200' 
+                        : 'bg-gray-50 border border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`text-lg font-bold ${
+                        index === 0 ? 'text-green-600' : 'text-gray-600'
+                      }`}>
+                        {index + 1}.
+                      </span>
+                      <span className={`font-medium ${
+                        index === 0 ? 'text-green-800' : 'text-gray-800'
+                      }`}>
+                        {day}
+                      </span>
+                    </div>
+                    <span className={`font-bold ${
+                      index === 0 ? 'text-green-600' : 'text-gray-600'
+                    }`}>
+                      {count} oy
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
+
+          {/* En Çok Uygun Olmayan Günler */}
+          <div className="bg-white shadow rounded-lg p-6">
+            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+              <XCircle className="h-6 w-6 text-red-500" />
+              En Çok Uygun Olmayan Günler
+            </h2>
+            <div className="space-y-4">
+              {DAYS
+                .map(day => ({
+                  day,
+                  count: voteStats[day]?.unavailable || 0
+                }))
+                .sort((a, b) => b.count - a.count)
+                .slice(0, 3)
+                .map(({ day, count }, index) => (
+                  <div 
+                    key={day}
+                    className={`flex items-center justify-between p-3 rounded-lg ${
+                      index === 0 
+                        ? 'bg-red-50 border border-red-200' 
+                        : 'bg-gray-50 border border-gray-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`text-lg font-bold ${
+                        index === 0 ? 'text-red-600' : 'text-gray-600'
+                      }`}>
+                        {index + 1}.
+                      </span>
+                      <span className={`font-medium ${
+                        index === 0 ? 'text-red-800' : 'text-gray-800'
+                      }`}>
+                        {day}
+                      </span>
+                    </div>
+                    <span className={`font-bold ${
+                      index === 0 ? 'text-red-600' : 'text-gray-600'
+                    }`}>
+                      {count} oy
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        </div>
 
         <div className="bg-white shadow rounded-lg p-6">
           <h2 className="text-xl font-semibold mb-4">Günlük Oylama Durumu</h2>
