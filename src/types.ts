@@ -5,10 +5,22 @@ export interface MeetingAvailability {
   time: string;
 }
 
+export interface DayTimeCombo {
+  id: string;       // Format: "Day@Time" (e.g. "Monday@21:00")
+  name: string;     // Friendly name (e.g. "Monday at 21:00")
+  day: string;      // Day component
+  time: string;     // Time component
+  count: number;    // Number of people available at this time
+  people: string[]; // Names of people available at this time
+}
+
 export interface AnalyticsData {
   dayStats: { name: string; value: number }[];
   timeStats: { name: string; value: number }[];
   weekdayStats: { name: string; value: number }[];
   mostCommonTime: string;
   mostCommonWeekday: string;
+  dayTimeCombos: DayTimeCombo[];
+  suggestedMeetingTime: DayTimeCombo | null;
+  top3MeetingTimes: DayTimeCombo[];
 }

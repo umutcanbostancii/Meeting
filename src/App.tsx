@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, Users } from 'lucide-react';
+import { Calendar, Clock, Users, PinIcon, Award } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import toast, { Toaster } from 'react-hot-toast';
 import { supabase } from './lib/supabase';
-import type { MeetingAvailability, AnalyticsData } from './types';
+import type { MeetingAvailability, AnalyticsData, DayTimeCombo } from './types';
 
 const DAYS = [
   'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
@@ -28,7 +28,10 @@ function App() {
     timeStats: [],
     weekdayStats: [],
     mostCommonTime: '',
-    mostCommonWeekday: ''
+    mostCommonWeekday: '',
+    dayTimeCombos: [],
+    suggestedMeetingTime: null,
+    top3MeetingTimes: []
   });
 
   const fetchAnalytics = async () => {
@@ -45,11 +48,21 @@ function App() {
     const dayCount: Record<string, number> = {};
     const timeCount: Record<string, number> = {};
     const weekdayCount: Record<string, number> = {};
+    const dayTimeCount: Record<string, { count: number, people: string[] }> = {};
     
     data.forEach((entry) => {
       entry.days.forEach((day: string) => {
         dayCount[day] = (dayCount[day] || 0) + 1;
+
+        // Gün-zaman kombinasyonu oluşturma
+        const comboId = `${day}@${entry.time}`;
+        if (!dayTimeCount[comboId]) {
+          dayTimeCount[comboId] = { count: 0, people: [] };
+        }
+        dayTimeCount[comboId].count += 1;
+        dayTimeCount[comboId].people.push(entry.name);
       });
+      
       timeCount[entry.time] = (timeCount[entry.time] || 0) + 1;
       
       // Hafta içi/sonu tercihlerini topla
@@ -73,12 +86,32 @@ function App() {
       ? 'Henüz veri yok'
       : `En popüler periyot: ${weekdayEntries.reduce((a, b) => weekdayCount[a[0]] > weekdayCount[b[0]] ? a : b)[0]}`;
 
+    // Gün-zaman kombinasyonlarını işle
+    const dayTimeCombos: DayTimeCombo[] = Object.entries(dayTimeCount).map(([id, { count, people }]) => {
+      const [day, time] = id.split('@');
+      return {
+        id,
+        name: `${day} at ${time}`,
+        day,
+        time,
+        count,
+        people
+      };
+    }).sort((a, b) => b.count - a.count); // En yüksek sayıdan başlayarak sırala
+
+    // En çok tercih edilen 3 zaman
+    const top3MeetingTimes = dayTimeCombos.slice(0, 3);
+    const suggestedMeetingTime = dayTimeCombos.length > 0 ? dayTimeCombos[0] : null;
+
     setAnalytics({
       dayStats,
       timeStats,
       weekdayStats,
       mostCommonTime,
-      mostCommonWeekday
+      mostCommonWeekday,
+      dayTimeCombos,
+      suggestedMeetingTime,
+      top3MeetingTimes
     });
   };
 
@@ -124,6 +157,20 @@ function App() {
       console.error('Gönderim hatası:', error);
       toast.error('Beklenmeyen bir hata oluştu');
     }
+  };
+
+  // Popover içeriğini göstermek için
+  const renderPeopleTooltip = (people: string[]) => {
+    return (
+      <div className="bg-white shadow-lg rounded p-2 text-sm">
+        <h4 className="font-medium mb-1">Participants:</h4>
+        <ul>
+          {people.map((person, index) => (
+            <li key={index}>{person}</li>
+          ))}
+        </ul>
+      </div>
+    );
   };
 
   return (
@@ -214,7 +261,71 @@ function App() {
             <Calendar className="h-6 w-6 text-indigo-600" />
             Analytics
           </h2>
+
+          {/* Suggested Meeting Time Section */}
+          {analytics.suggestedMeetingTime && (
+            <div className="mb-8 bg-indigo-50 rounded-lg p-6 border border-indigo-200">
+              <h3 className="text-xl font-bold text-indigo-800 mb-4 flex items-center gap-2">
+                <PinIcon className="h-5 w-5 text-indigo-600" />
+                Suggested Meeting Time
+              </h3>
+              
+              <div className="flex flex-col sm:flex-row justify-between items-center">
+                <div className="text-center sm:text-left mb-4 sm:mb-0">
+                  <p className="text-3xl font-bold text-indigo-700">
+                    {analytics.suggestedMeetingTime.name}
+                  </p>
+                  <p className="text-indigo-600 mt-1">
+                    {analytics.suggestedMeetingTime.count} people available
+                  </p>
+                </div>
+
+                <div className="flex flex-col">
+                  <button 
+                    className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors"
+                    onClick={() => {
+                      const people = analytics.suggestedMeetingTime?.people || [];
+                      const names = people.join(', ');
+                      toast(renderPeopleTooltip(people), { duration: 5000 });
+                    }}
+                  >
+                    View Participants
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           
+          {/* Top Alternatives */}
+          {analytics.top3MeetingTimes.length > 1 && (
+            <div className="mb-8">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Top Alternatives</h3>
+              <div className="space-y-4">
+                {analytics.top3MeetingTimes.slice(1).map((combo, index) => (
+                  <div 
+                    key={combo.id} 
+                    className="flex justify-between items-center p-3 bg-gray-50 rounded-md hover:bg-gray-100 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Award className="h-5 w-5 text-gray-500" />
+                      <span className="font-medium">{combo.name}</span>
+                      <span className="text-sm text-gray-500">({combo.count} votes)</span>
+                    </div>
+                    <button 
+                      className="text-indigo-600 hover:text-indigo-800 text-sm"
+                      onClick={() => {
+                        toast(renderPeopleTooltip(combo.people), { duration: 5000 });
+                      }}
+                    >
+                      View participants
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Original Analytics */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div>
               <h3 className="text-lg font-medium text-gray-900 mb-4">Days Distribution</h3>
@@ -271,6 +382,23 @@ function App() {
                 </PieChart>
               </ResponsiveContainer>
             </div>
+          </div>
+
+          {/* Day-Time Combination Chart */}
+          <div className="mt-8">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Day-Time Combinations</h3>
+            <ResponsiveContainer width="100%" height={400}>
+              <BarChart 
+                data={analytics.dayTimeCombos.slice(0, 10)} 
+                layout="vertical"
+                margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
+              >
+                <XAxis type="number" />
+                <YAxis type="category" dataKey="name" width={150} />
+                <Tooltip />
+                <Bar dataKey="count" fill="#8884d8" />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
 
           <div className="mt-6 text-center">
