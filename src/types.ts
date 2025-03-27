@@ -24,3 +24,24 @@ export interface AnalyticsData {
   suggestedMeetingTime: DayTimeCombo | null;
   top3MeetingTimes: DayTimeCombo[];
 }
+
+export interface FinalVote {
+  name: string;
+  available_day: string;
+  unavailable_day: string;
+}
+
+export interface VoteCount {
+  available: number;
+  unavailable: number;
+}
+
+export interface DayVoteStats {
+  [key: string]: VoteCount;
+}
+
+export interface VoteResults {
+  name: string;
+  availableDay: string;
+  unavailableDay: string;
+}

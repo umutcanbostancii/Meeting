@@ -1,176 +1,100 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, Users, PinIcon, Award } from 'lucide-react';
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import { Calendar, Clock, Users, PinIcon, Award, CheckCircle, XCircle } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import { supabase } from './lib/supabase';
-import type { MeetingAvailability, AnalyticsData, DayTimeCombo } from './types';
+import type { FinalVote, VoteCount, DayVoteStats, VoteResults } from './types';
 
 const DAYS = [
   'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
 ];
 
-const HOURS = Array.from({ length: 24 }, (_, i) => 
-  `${i.toString().padStart(2, '0')}:00`
-);
-
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FFC0CB'];
-
 function App() {
-  const [formData, setFormData] = useState<MeetingAvailability>({
+  const [formData, setFormData] = useState<FinalVote>({
     name: '',
-    weekdayOrWeekend: 'weekday',
-    days: [],
-    time: ''
+    available_day: '',
+    unavailable_day: ''
   });
 
-  const [analytics, setAnalytics] = useState<AnalyticsData>({
-    dayStats: [],
-    timeStats: [],
-    weekdayStats: [],
-    mostCommonTime: '',
-    mostCommonWeekday: '',
-    dayTimeCombos: [],
-    suggestedMeetingTime: null,
-    top3MeetingTimes: []
-  });
+  const [voteStats, setVoteStats] = useState<DayVoteStats>({});
+  const [results, setResults] = useState<VoteResults[]>([]);
+  const [suggestedDay, setSuggestedDay] = useState<string>('');
 
-  const fetchAnalytics = async () => {
+  const fetchVotes = async () => {
     const { data, error } = await supabase
-      .from('meeting_times')
+      .from('final_votes')
       .select('*');
 
     if (error) {
-      toast.error('Failed to fetch analytics');
+      toast.error('Oyları getirirken hata oluştu');
       return;
     }
 
-    // Process day statistics
-    const dayCount: Record<string, number> = {};
-    const timeCount: Record<string, number> = {};
-    const weekdayCount: Record<string, number> = {};
-    const dayTimeCount: Record<string, { count: number, people: string[] }> = {};
-    
-    data.forEach((entry) => {
-      entry.days.forEach((day: string) => {
-        dayCount[day] = (dayCount[day] || 0) + 1;
-
-        // Gün-zaman kombinasyonu oluşturma
-        const comboId = `${day}@${entry.time}`;
-        if (!dayTimeCount[comboId]) {
-          dayTimeCount[comboId] = { count: 0, people: [] };
-        }
-        dayTimeCount[comboId].count += 1;
-        dayTimeCount[comboId].people.push(entry.name);
-      });
-      
-      timeCount[entry.time] = (timeCount[entry.time] || 0) + 1;
-      
-      // Hafta içi/sonu tercihlerini topla
-      const preference = entry.weekdayorweekend === 'weekday' ? 'Hafta İçi' : 'Hafta Sonu';
-      weekdayCount[preference] = (weekdayCount[preference] || 0) + 1;
+    // Oyları işle
+    const stats: DayVoteStats = {};
+    DAYS.forEach(day => {
+      stats[day] = { available: 0, unavailable: 0 };
     });
 
-    const dayStats = Object.entries(dayCount).map(([name, value]) => ({ name, value }));
-    const timeStats = Object.entries(timeCount).map(([name, value]) => ({ name, value }));
-    const weekdayStats = Object.entries(weekdayCount).map(([name, value]) => ({ name, value }));
-
-    // Find most common time
-    const timeEntries = Object.entries(timeCount);
-    const mostCommonTime = timeEntries.length === 0 
-      ? 'Henüz veri yok'
-      : `En popüler zaman: ${timeEntries.reduce((a, b) => timeCount[a[0]] > timeCount[b[0]] ? a : b)[0]}`;
-
-    // En popüler hafta içi/sonu tercihini bul
-    const weekdayEntries = Object.entries(weekdayCount);
-    const mostCommonWeekday = weekdayEntries.length === 0
-      ? 'Henüz veri yok'
-      : `En popüler periyot: ${weekdayEntries.reduce((a, b) => weekdayCount[a[0]] > weekdayCount[b[0]] ? a : b)[0]}`;
-
-    // Gün-zaman kombinasyonlarını işle
-    const dayTimeCombos: DayTimeCombo[] = Object.entries(dayTimeCount).map(([id, { count, people }]) => {
-      const [day, time] = id.split('@');
-      return {
-        id,
-        name: `${day} at ${time}`,
-        day,
-        time,
-        count,
-        people
-      };
-    }).sort((a, b) => b.count - a.count); // En yüksek sayıdan başlayarak sırala
-
-    // En çok tercih edilen 3 zaman
-    const top3MeetingTimes = dayTimeCombos.slice(0, 3);
-    const suggestedMeetingTime = dayTimeCombos.length > 0 ? dayTimeCombos[0] : null;
-
-    setAnalytics({
-      dayStats,
-      timeStats,
-      weekdayStats,
-      mostCommonTime,
-      mostCommonWeekday,
-      dayTimeCombos,
-      suggestedMeetingTime,
-      top3MeetingTimes
+    data.forEach((vote: FinalVote) => {
+      stats[vote.available_day].available++;
+      stats[vote.unavailable_day].unavailable++;
     });
+
+    setVoteStats(stats);
+    setResults(data.map(vote => ({
+      name: vote.name,
+      availableDay: vote.available_day,
+      unavailableDay: vote.unavailable_day
+    })));
+
+    // En uygun günü hesapla
+    const availableDays = DAYS.filter(day => stats[day].unavailable === 0);
+    if (availableDays.length > 0) {
+      const bestDay = availableDays.reduce((a, b) => 
+        stats[a].available > stats[b].available ? a : b
+      );
+      setSuggestedDay(bestDay);
+    }
   };
 
   useEffect(() => {
-    fetchAnalytics();
+    fetchVotes();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.name || !formData.weekdayOrWeekend || formData.days.length === 0 || !formData.time) {
+    if (!formData.name || !formData.available_day || !formData.unavailable_day) {
       toast.error('Lütfen tüm alanları doldurun');
+      return;
+    }
+
+    if (formData.available_day === formData.unavailable_day) {
+      toast.error('Aynı günü hem uygun hem de uygun değil olarak seçemezsiniz');
       return;
     }
 
     try {
       const { error } = await supabase
-        .from('meeting_times')
-        .insert([{
-          name: formData.name,
-          weekdayorweekend: formData.weekdayOrWeekend,
-          days: formData.days,
-          time: formData.time
-        }]);
+        .from('final_votes')
+        .insert([formData]);
 
       if (error) {
-        console.error('Supabase hatası:', error);
         toast.error(`Kayıt hatası: ${error.message}`);
         return;
       }
 
-      toast.success('Toplantı zamanınız kaydedildi!');
-      fetchAnalytics();
+      toast.success('Oylarınız kaydedildi!');
+      fetchVotes();
       
-      // Formu sıfırla
       setFormData({
         name: '',
-        weekdayOrWeekend: 'weekday',
-        days: [],
-        time: ''
+        available_day: '',
+        unavailable_day: ''
       });
     } catch (error) {
-      console.error('Gönderim hatası:', error);
       toast.error('Beklenmeyen bir hata oluştu');
     }
-  };
-
-  // Popover içeriğini göstermek için
-  const renderPeopleTooltip = (people: string[]) => {
-    return (
-      <div className="bg-white shadow-lg rounded p-2 text-sm">
-        <h4 className="font-medium mb-1">Participants:</h4>
-        <ul>
-          {people.map((person, index) => (
-            <li key={index}>{person}</li>
-          ))}
-        </ul>
-      </div>
-    );
   };
 
   return (
@@ -179,15 +103,15 @@ function App() {
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold text-gray-900 flex items-center justify-center gap-3">
             <Users className="h-8 w-8 text-indigo-600" />
-            Meeting Availability
+            Toplantı Zamanı Seçimi
           </h1>
-          <p className="mt-2 text-lg text-gray-600">Help us find the perfect time for everyone</p>
+          <p className="mt-2 text-lg text-gray-600">En uygun toplantı zamanını belirleyelim</p>
         </div>
 
         <div className="bg-white shadow rounded-lg p-6 mb-8">
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700">Name</label>
+              <label className="block text-sm font-medium text-gray-700">İsim</label>
               <input
                 type="text"
                 value={formData.name}
@@ -197,223 +121,117 @@ function App() {
               />
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Preference</label>
-              <select
-                value={formData.weekdayOrWeekend}
-                onChange={(e) => setFormData({ ...formData, weekdayOrWeekend: e.target.value as 'weekday' | 'weekend' })}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                required
-              >
-                <option value="weekday">Weekdays</option>
-                <option value="weekend">Weekends</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Available Days</label>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                {DAYS.map((day) => (
-                  <label key={day} className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      checked={formData.days.includes(day)}
-                      onChange={(e) => {
-                        const newDays = e.target.checked
-                          ? [...formData.days, day]
-                          : formData.days.filter(d => d !== day);
-                        setFormData({ ...formData, days: newDays });
-                      }}
-                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <span className="text-sm text-gray-700">{day}</span>
-                  </label>
-                ))}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Uygun Olduğunuz Gün</label>
+                <div className="space-y-2">
+                  {DAYS.map((day) => (
+                    <label key={day} className="flex items-center space-x-2">
+                      <input
+                        type="radio"
+                        name="available_day"
+                        value={day}
+                        checked={formData.available_day === day}
+                        onChange={(e) => setFormData({ ...formData, available_day: e.target.value })}
+                        className="text-green-500 focus:ring-green-500"
+                        required
+                      />
+                      <span className="text-sm text-gray-700">{day}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
-            </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Preferred Time</label>
-              <select
-                value={formData.time}
-                onChange={(e) => setFormData({ ...formData, time: e.target.value })}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                required
-              >
-                <option value="">Select a time</option>
-                {HOURS.map((hour) => (
-                  <option key={hour} value={hour}>{hour}</option>
-                ))}
-              </select>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Uygun Olmadığınız Gün</label>
+                <div className="space-y-2">
+                  {DAYS.map((day) => (
+                    <label key={day} className="flex items-center space-x-2">
+                      <input
+                        type="radio"
+                        name="unavailable_day"
+                        value={day}
+                        checked={formData.unavailable_day === day}
+                        onChange={(e) => setFormData({ ...formData, unavailable_day: e.target.value })}
+                        className="text-red-500 focus:ring-red-500"
+                        required
+                      />
+                      <span className="text-sm text-gray-700">{day}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <button
               type="submit"
               className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
             >
-              Submit Availability
+              Oyla
             </button>
           </form>
         </div>
 
-        <div className="bg-white shadow rounded-lg p-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
-            <Calendar className="h-6 w-6 text-indigo-600" />
-            Analytics
-          </h2>
-
-          {/* Suggested Meeting Time Section */}
-          {analytics.suggestedMeetingTime && (
-            <div className="mb-8 bg-indigo-50 rounded-lg p-6 border border-indigo-200">
-              <h3 className="text-xl font-bold text-indigo-800 mb-4 flex items-center gap-2">
-                <PinIcon className="h-5 w-5 text-indigo-600" />
-                Suggested Meeting Time
-              </h3>
-              
-              <div className="flex flex-col sm:flex-row justify-between items-center">
-                <div className="text-center sm:text-left mb-4 sm:mb-0">
-                  <p className="text-3xl font-bold text-indigo-700">
-                    {analytics.suggestedMeetingTime.name}
-                  </p>
-                  <p className="text-indigo-600 mt-1">
-                    {analytics.suggestedMeetingTime.count} people available
-                  </p>
-                </div>
-
-                <div className="flex flex-col">
-                  <button 
-                    className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 transition-colors"
-                    onClick={() => {
-                      const people = analytics.suggestedMeetingTime?.people || [];
-                      const names = people.join(', ');
-                      toast(renderPeopleTooltip(people), { duration: 5000 });
-                    }}
-                  >
-                    View Participants
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {/* Top Alternatives */}
-          {analytics.top3MeetingTimes.length > 1 && (
-            <div className="mb-8">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Top Alternatives</h3>
-              <div className="space-y-4">
-                {analytics.top3MeetingTimes.slice(1).map((combo, index) => (
-                  <div 
-                    key={combo.id} 
-                    className="flex justify-between items-center p-3 bg-gray-50 rounded-md hover:bg-gray-100 transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Award className="h-5 w-5 text-gray-500" />
-                      <span className="font-medium">{combo.name}</span>
-                      <span className="text-sm text-gray-500">({combo.count} votes)</span>
-                    </div>
-                    <button 
-                      className="text-indigo-600 hover:text-indigo-800 text-sm"
-                      onClick={() => {
-                        toast(renderPeopleTooltip(combo.people), { duration: 5000 });
-                      }}
-                    >
-                      View participants
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Original Analytics */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Days Distribution</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={analytics.dayStats}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={80}
-                    label
-                  >
-                    {analytics.dayStats.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Time Preferences</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={analytics.timeStats}>
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="value" fill="#8884d8" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div>
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Period Preferences</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={analytics.weekdayStats}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={80}
-                    label
-                  >
-                    {analytics.weekdayStats.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-
-          {/* Day-Time Combination Chart */}
-          <div className="mt-8">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Day-Time Combinations</h3>
-            <ResponsiveContainer width="100%" height={400}>
-              <BarChart 
-                data={analytics.dayTimeCombos.slice(0, 10)} 
-                layout="vertical"
-                margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
-              >
-                <XAxis type="number" />
-                <YAxis type="category" dataKey="name" width={150} />
-                <Tooltip />
-                <Bar dataKey="count" fill="#8884d8" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="mt-6 text-center">
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <Clock className="h-5 w-5 text-indigo-600" />
-              <p className="text-lg font-medium text-gray-900">{analytics.mostCommonTime}</p>
-            </div>
+        {suggestedDay && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-8">
             <div className="flex items-center justify-center gap-2">
-              <Calendar className="h-5 w-5 text-indigo-600" />
-              <p className="text-lg font-medium text-gray-900">{analytics.mostCommonWeekday}</p>
+              <PinIcon className="h-5 w-5 text-green-500" />
+              <p className="text-lg font-medium text-green-800">
+                Önerilen Toplantı Zamanı: {suggestedDay} @ 21:00
+              </p>
             </div>
+          </div>
+        )}
+
+        <div className="bg-white shadow rounded-lg p-6">
+          <h2 className="text-xl font-semibold mb-4">Günlük Oylama Durumu</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {DAYS.map((day) => (
+              <div key={day} className="border rounded-lg p-4">
+                <h3 className="font-medium mb-2">{day}</h3>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-green-600">
+                    <span>✅ Uygunum</span>
+                    <span className="font-medium">{voteStats[day]?.available || 0}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-red-600">
+                    <span>❌ Uygun değilim</span>
+                    <span className="font-medium">{voteStats[day]?.unavailable || 0}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
+
+        {results.length > 0 && (
+          <div className="bg-white shadow rounded-lg p-6 mt-8">
+            <h2 className="text-xl font-semibold mb-4">Katılımcı Tercihleri</h2>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead>
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">İsim</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Uygun Gün</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Uygun Olmayan Gün</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {results.map((result, index) => (
+                    <tr key={index}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{result.name}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600">{result.availableDay}</td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">{result.unavailableDay}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        <Toaster position="top-right" />
       </div>
-      <Toaster position="top-right" />
     </div>
   );
 }
